@@ -1,4 +1,4 @@
-name: ics26011_budget_tracker
+name: mobprogproj
 description: "A new Flutter project."
 
 publish_to: 'none'
@@ -15,8 +15,15 @@ dependencies:
   shared_preferences: ^2.1.1
   intl: ^0.18.0
   fl_chart: ^0.69.0
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
 
   cupertino_icons: ^1.0.8
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
 
 dev_dependencies:
   flutter_test:

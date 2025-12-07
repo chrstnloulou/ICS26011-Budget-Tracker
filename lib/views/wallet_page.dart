@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:ics26011_budget_tracker/views/analytics_view.dart';
+import 'package:mobprogproj/views/analytics_view.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../controllers/wallet_controller.dart';
+import '../controllers/analytics_controller.dart';
 import '../models/transaction_model.dart';
+import 'package:flutter/services.dart';
+
 
 
 class WalletPage extends StatefulWidget {
@@ -12,6 +15,8 @@ class WalletPage extends StatefulWidget {
   @override
   State<WalletPage> createState() => _WalletPageState();
 }
+final NumberFormat currencyFormat = NumberFormat('#,##0.00', 'en_PH');
+
 
 class _WalletPageState extends State<WalletPage> {
   int _selectedIndex = 0;
@@ -25,13 +30,10 @@ class _WalletPageState extends State<WalletPage> {
       // Go to Wallet Page
       Navigator.pushReplacementNamed(context, '/wallet');
     }
-    else if (index == 1) {
-      // Calculator is not implemented yet
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Calculator page not yet added")),
-      );
-    }
     else if (index == 2) {
+      Navigator.pushReplacementNamed(context, '/budget');
+      }
+    else if (index == 1) {
       // Go to Analytics Page
       Navigator.pushReplacement(
         context,
@@ -40,22 +42,9 @@ class _WalletPageState extends State<WalletPage> {
     }
     else if (index == 3) {
       // Exit (optional)
+      SystemNavigator.pop();
     }
 
-
-    switch (index) {
-      case 1:
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Calculator coming soon!')));
-        break;
-      case 2:
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Analysis coming soon!')));
-        break;
-      case 3:
-        Navigator.pop(context); // Exit to StartPage
-        break;
-    }
   }
 
   void _showAddTransactionDialog(BuildContext context, WalletController controller) {
@@ -334,20 +323,24 @@ class _WalletPageState extends State<WalletPage> {
                       color: Colors.black,
                     ),
                   ),
+
+                  // 🔹 App Logo as Profile Circle
                   Container(
                     height: 40,
                     width: 40,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.grey,
-                    ),
-                    child: const Center(
-                      child: Text('L', style: TextStyle(color: Colors.white)),
+                      color: Colors.grey.shade200,
+                      image: const DecorationImage(
+                        image: AssetImage('assets/logo.png'),
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+
 
             const SizedBox(height: 16),
 
@@ -376,7 +369,7 @@ class _WalletPageState extends State<WalletPage> {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          '₱${controller.wallet.totalBalance.toStringAsFixed(2)}',
+                          '₱${currencyFormat.format(controller.wallet.totalBalance)}',
                           style: const TextStyle(
                             color: Colors.black,
                             fontSize: 28,
@@ -384,18 +377,18 @@ class _WalletPageState extends State<WalletPage> {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        const Row(
+                        Row(
                           children: [
                             Text(
-                              '-5.93%',
+                              '${controller.percentIncrease.toStringAsFixed(2)}%',
                               style: TextStyle(
-                                color: Colors.red,
+                                color: controller.percentIncrease >= 0 ? Colors.red : Colors.green,
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            SizedBox(width: 4),
-                            Text(
+                             SizedBox(width: 4),
+                             Text(
                               'Since last month',
                               style: TextStyle(
                                 color: Colors.black54,
@@ -626,7 +619,7 @@ class _WalletPageState extends State<WalletPage> {
                                   ),
                                 ),
                                 Text(
-                                  (tx.type == 'income' ? '+₱' : '-₱') + tx.amount.toStringAsFixed(2),
+                                  (tx.type == 'income' ? '+₱' : '-₱') + currencyFormat.format(tx.amount),
                                   style: TextStyle(
                                     color: tx.type == 'income' ? Colors.green : Colors.red,
                                     fontWeight: FontWeight.bold,
@@ -665,12 +658,12 @@ class _WalletPageState extends State<WalletPage> {
             label: 'Wallet',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calculate),
-            label: 'Calculator',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.analytics),
             label: 'Analysis',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calculate),
+            label: 'Budget',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.exit_to_app),

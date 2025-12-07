@@ -157,4 +157,43 @@ class WalletController extends ChangeNotifier {
     saveData();
     notifyListeners();
   }
+
+  // ----------------------------------------------------------
+// ANALYTICS VALUES FOR WALLET PAGE
+// ----------------------------------------------------------
+
+  double get thisMonthExpense {
+    final now = DateTime.now();
+    return _wallet.transactions
+        .where((tx) =>
+    tx.type == "expense" &&
+        tx.date.month == now.month &&
+        tx.date.year == now.year)
+        .fold(0.0, (sum, tx) => sum + tx.amount);
+  }
+
+  double get lastMonthExpense {
+    final now = DateTime.now();
+
+    final lastMonth = now.month == 1 ? 12 : now.month - 1;
+    final year = now.month == 1 ? now.year - 1 : now.year;
+
+    return _wallet.transactions
+        .where((tx) =>
+    tx.type == "expense" &&
+        tx.date.month == lastMonth &&
+        tx.date.year == year)
+        .fold(0.0, (sum, tx) => sum + tx.amount);
+  }
+
+  double get percentIncrease {
+    final last = lastMonthExpense;
+    final now = thisMonthExpense;
+
+    if (last == 0) return 0;
+
+    return ((now - last) / last) * 100;
+  }
+
+
 }

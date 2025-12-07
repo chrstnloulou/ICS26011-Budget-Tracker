@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
+
 
 import '../controllers/analytics_controller.dart';
 import '../controllers/wallet_controller.dart';
 import '../views/wallet_page.dart';
+import '../views/budget_planner_page.dart';
 
 class AnalyticsPage extends StatefulWidget {
   const AnalyticsPage({super.key});
@@ -12,218 +16,303 @@ class AnalyticsPage extends StatefulWidget {
   @override
   State<AnalyticsPage> createState() => _AnalyticsPageState();
 }
+final NumberFormat pesoFormat = NumberFormat('#,##0.00', 'en_PH');
+
+int touchedIndex = -1;
 
 class _AnalyticsPageState extends State<AnalyticsPage> {
   final AnalyticsController controller = AnalyticsController();
 
   String selectedMode = "Month"; // Month or Year
-  int _selectedIndex = 2;
+  int _selectedIndex = 1;
 
-  double smartInterval(List<FlSpot> spots) {
+  double getCleanInterval(List<FlSpot> spots) {
     if (spots.isEmpty) return 100;
 
-    double maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    double maxY =
+    spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
 
-    // Round maxY to a clean value
-    double cleanMax = (maxY / 100).ceil() * 100;
+    // Want around 5 horizontal lines always
+    double rough = maxY / 5;
 
-    // Ideal intervals: 5 grid lines
-    double interval = cleanMax / 5;
+    // Nice, rounded intervals
+    List<double> niceSteps = [
+      10, 20, 50, 100,
+      200, 500, 1000,
+      2000, 5000, 10000,
+      20000, 50000
+    ];
 
-    // Keep clean numbers (100, 200, 500, 1000, 2000…)
-    if (interval < 100) interval = 50;
-    if (interval < 50) interval = 20;
+    for (double n in niceSteps) {
+      if (rough <= n) return n;
+    }
 
-    return interval;
+    return rough; // fallback
   }
+
+  String formatNumber(double value) {
+    if (value >= 1000000) {
+      return "${(value / 1000000).toStringAsFixed(1)}M";
+    }
+    if (value >= 1000) {
+      return "${(value / 1000).toStringAsFixed(1)}k";
+    }
+    return value.toInt().toString();
+  }
+  String valueText(double value) {
+    if (selectedMode == "Year") {
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      int idx = value.toInt();
+      if (idx < 1 || idx > 12) return "";
+      return months[idx - 1];
+    }
+    return value.toInt().toString();
+  }
+
+  final Map<String, Color> pieColors = {
+    "Shopping": Colors.purple,
+    "Food": Colors.orange,
+    "Bills": Colors.blue,
+    "Commute": Colors.lightBlue,
+    "Subscription": Colors.yellow,
+    "Work": Colors.teal,
+    "Others": Colors.grey,
+  };
+
+
 
 
   LineChartData monthChartData() {
-    final data = controller.getMonthlyData();
-    if (data.isEmpty) {
+    final spots = controller.getMonthlySpots();
+
+    if (spots.isEmpty) {
       return LineChartData(
         lineBarsData: [],
         titlesData: FlTitlesData(show: false),
       );
     }
 
+    double interval = controller.calculateInterval(spots);
 
-
-    final spots = data.entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value))
-        .toList()
-      ..sort((a, b) => a.x.compareTo(b.x));
+    String formatNumber(double value) {
+      if (value >= 1000) return "${(value / 1000).toStringAsFixed(1)}k";
+      return value.toInt().toString();
+    }
 
     return LineChartData(
       minX: spots.first.x,
       maxX: spots.last.x,
       minY: 0,
+
       gridData: FlGridData(
         show: true,
         drawVerticalLine: true,
         drawHorizontalLine: true,
-        horizontalInterval: 500, // adjust for months
+        horizontalInterval: interval,
         verticalInterval: 1,
-        getDrawingHorizontalLine: (value) {
-          return FlLine(
-            color: Colors.grey.shade300,
-            strokeWidth: 1,
-          );
-        },
-        getDrawingVerticalLine: (value) {
-          return FlLine(
-            color: Colors.grey.shade200,
-            strokeWidth: 1,
-          );
-        },
+        getDrawingHorizontalLine: (value) => FlLine(
+          color: Colors.grey.shade300.withOpacity(0.6),
+          strokeWidth: 0.7,
+        ),
+        getDrawingVerticalLine: (value) => FlLine(
+          color: Colors.grey.shade300.withOpacity(0.3),
+          strokeWidth: 0.5,
+        ),
       ),
 
       titlesData: FlTitlesData(
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            interval: 3,
+            interval: selectedMode == "Month" ? 25 : 1,
             getTitlesWidget: (value, meta) {
-              return Text(
-                value.toInt().toString(),
-                style: const TextStyle(fontSize: 10),
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  valueText(value),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               );
             },
           ),
         ),
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: true),
-        ),
-      ),
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          barWidth: 3,
-          dotData: const FlDotData(show: true),
-          color: Colors.red,
-        ),
-      ],
-    );
-  }
-  LineChartData yearChartData() {
-    final data = controller.getYearlyData();
-    String formatNumber(double value) {
-      if (value >= 1000) {
-        return "${(value / 1000).toStringAsFixed(1)}k";
-      }
-      return value.toInt().toString();
-    }
 
-    double calculateInterval(List<FlSpot> spots) {
-      if (spots.isEmpty) return 1000;
-
-      double maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-
-      if (maxY <= 1000) return 200;
-      if (maxY <= 5000) return 1000;
-      if (maxY <= 10000) return 2000;
-      return maxY / 5;
-    }
-
-
-    if (data.isEmpty) {
-      return LineChartData(
-        lineBarsData: [],
-        titlesData: FlTitlesData(show: false),
-      );
-    }
-
-
-    final spots = data.entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value))
-        .toList()
-      ..sort((a, b) => a.x.compareTo(b.x));
-
-    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-    return LineChartData(
-      minX: 1,
-      maxX: 12,
-      minY: 0,
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: true,
-        drawHorizontalLine: true,
-        horizontalInterval: calculateInterval(spots),
-        verticalInterval: 1,
-        getDrawingHorizontalLine: (value) {
-          return FlLine(
-            color: Colors.grey.shade300,
-            strokeWidth: 1,
-          );
-        },
-        getDrawingVerticalLine: (value) {
-          return FlLine(
-            color: Colors.grey.shade200,
-            strokeWidth: 1,
-          );
-        },
-      ),
-      titlesData: FlTitlesData(
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            interval: 1,
-            getTitlesWidget: (value, meta) {
-              int index = value.toInt();
-              if (index < 1 || index > 12) return const SizedBox();
-              return Text(monthNames[index - 1], style: const TextStyle(fontSize: 10));
-            },
-          ),
-        ),
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            interval: calculateInterval(spots),
-            reservedSize: 40, // prevents overlap
-            getTitlesWidget: (value, meta) {
-              return Text(
+            reservedSize: 32,
+            interval: interval,
+            getTitlesWidget: (value, meta) => Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
                 formatNumber(value),
-                style: const TextStyle(fontSize: 10),
-              );
-            },
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
         ),
-
+        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
+
       lineBarsData: [
         LineChartBarData(
           spots: spots,
           isCurved: true,
+          curveSmoothness: 0.32,
           barWidth: 3,
-          dotData: const FlDotData(show: true),
-
-          gradient: const LinearGradient(
-            colors: [
-              Colors.red,
-              Colors.orange,
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+          color: Colors.orange.shade700,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (a, b, c, d) => FlDotCirclePainter(
+              radius: 4,
+              color: Colors.orange.shade700,
+              strokeWidth: 1.5,
+              strokeColor: Colors.white,
+            ),
           ),
-
           belowBarData: BarAreaData(
             show: true,
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.red.withOpacity(0.25),
-                Colors.orange.withOpacity(0.05),
+                Colors.orange.shade400.withOpacity(0.35),
+                Colors.orange.shade200.withOpacity(0.12),
+                Colors.orange.shade100.withOpacity(0.0),
               ],
             ),
           ),
         ),
       ],
-
     );
   }
+
+
+  LineChartData yearChartData() {
+    final spots = controller.getYearlySpots();
+
+    if (spots.isEmpty) {
+      return LineChartData(
+        lineBarsData: [],
+        titlesData: FlTitlesData(show: false),
+      );
+    }
+
+    double interval = controller.calculateInterval(spots);
+
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    String formatNumber(double value) {
+      if (value >= 1000) return "${(value / 1000).toStringAsFixed(1)}k";
+      return value.toInt().toString();
+    }
+
+    return LineChartData(
+      minX: 1,
+      maxX: 12,
+      minY: 0,
+
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: true,
+        drawHorizontalLine: true,
+        horizontalInterval: interval,
+        verticalInterval: 1,
+        getDrawingHorizontalLine: (value) => FlLine(
+          color: Colors.grey.shade300.withOpacity(0.6),
+          strokeWidth: 0.7,
+        ),
+        getDrawingVerticalLine: (value) => FlLine(
+          color: Colors.grey.shade300.withOpacity(0.3),
+          strokeWidth: 0.5,
+        ),
+      ),
+
+      titlesData: FlTitlesData(
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            interval: 1,
+            getTitlesWidget: (value, meta) {
+              int idx = value.toInt() - 1;
+              if (idx < 0 || idx > 11) return SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  monthNames[idx],
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 32,
+            interval: interval,
+            getTitlesWidget: (value, meta) => Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                formatNumber(value),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      ),
+
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          curveSmoothness: 0.32,
+          barWidth: 3,
+          color: Colors.orange.shade700,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (a, b, c, d) => FlDotCirclePainter(
+              radius: 4,
+              color: Colors.orange.shade700,
+              strokeWidth: 1.5,
+              strokeColor: Colors.white,
+            ),
+          ),
+          belowBarData: BarAreaData(
+            show: true,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.orange.shade400.withOpacity(0.35),
+                Colors.orange.shade200.withOpacity(0.12),
+                Colors.orange.shade100.withOpacity(0.0),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
 
 
   @override
@@ -258,15 +347,15 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         context,
         MaterialPageRoute(builder: (_) => const WalletPage()),
       );
-    } else if (index == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Calculator page not yet implemented")),
+    } else if (index == 2) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const BudgetPlannerPage()),
       );
     } else if (index == 2) {
       // already here
     } else if (index == 3) {
-      // Exit or logout
+      SystemNavigator.pop();
     }
   }
 
@@ -278,6 +367,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onNavTapped,
+
         backgroundColor: Colors.white,
         selectedItemColor: Colors.green,
         unselectedItemColor: Colors.black54,
@@ -288,12 +378,12 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             label: 'Wallet',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calculate),
-            label: 'Calculator',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.analytics),
             label: 'Analysis',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calculate),
+            label: 'Budget',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.exit_to_app),
@@ -322,6 +412,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               const SizedBox(height: 12),
 
               _buildWalletSection(),
+              const SizedBox(height: 12),
+
+
             ],
           ),
         ),
@@ -378,7 +471,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               const Text("Expense (This Month)",
                   style: TextStyle(fontSize: 14, color: Colors.red)),
               Text(
-                "₱${controller.thisMonthExpense.toStringAsFixed(2)}",
+                '₱${pesoFormat.format(controller.thisMonthExpense)}',
                 style:
                 const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
@@ -442,7 +535,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 children: [
                   const Text("Last Month:", style: TextStyle(fontSize: 12)),
                   Text(
-                    "₱${controller.lastMonthExpense.toStringAsFixed(2)}",
+                    '₱${pesoFormat.format(controller.lastMonthExpense)}',
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.bold),
                   ),
@@ -468,7 +561,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 children: [
                   const Text("This Month:", style: TextStyle(fontSize: 12)),
                   Text(
-                    "₱${controller.thisMonthExpense.toStringAsFixed(2)}",
+                    '₱${pesoFormat.format(controller.thisMonthExpense)}',
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.bold),
                   ),
@@ -485,11 +578,11 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               color: Colors.grey.shade100,
               borderRadius: BorderRadius.circular(12),
             ),
-              child: LineChart(
-                selectedMode == "Month"
-                    ? monthChartData()
-                    : yearChartData(),
-              ),
+            child: LineChart(
+              selectedMode == "Month"
+                  ? monthChartData()
+                  : yearChartData(),
+            ),
           ),
         ],
       ),
@@ -497,61 +590,203 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   }
 
   Widget _buildPieChartSection() {
+    final categoryTotals = controller.getCategoryTotals();
+    final topCategory = controller.getTopCategory();
+
+    if (categoryTotals.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Center(
+          child: Text("No expenses to analyze"),
+        ),
+      );
+    }
+
+    // Compute total
+    final total = categoryTotals.values.fold(0.0, (a, b) => a + b);
+
+    // Resolve colors
+    final Map<String, Color> resolvedColors = {};
+    final Map<Color, int> usedCount = {};
+
+    for (var entry in categoryTotals.entries) {
+      final baseColor = pieColors[entry.key] ?? Colors.grey;
+
+      if (!usedCount.containsKey(baseColor)) {
+        usedCount[baseColor] = 0;
+      } else {
+        usedCount[baseColor] = usedCount[baseColor]! + 1;
+      }
+
+      final shadeFactor = usedCount[baseColor]!;
+      resolvedColors[entry.key] =
+          baseColor.withOpacity(1 - (shadeFactor * 0.15));
+    }
+
+    // Build sections
+    final sections = categoryTotals.entries.map((e) {
+      final percent = (e.value / total) * 100;
+      final color = resolvedColors[e.key]!;
+
+      return PieChartSectionData(
+        color: color,
+        value: e.value,
+        radius: 65,
+        title: "${percent.toStringAsFixed(1)}%",
+        titleStyle: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+        titlePositionPercentageOffset: 0.63,
+      );
+    }).toList();
+
+    //------------------------------------
+    // RESPONSIVE BREAKPOINT
+    //------------------------------------
+    final screenWidth = MediaQuery.of(context).size.width;
+    final bool isWide = screenWidth > 500; // Tablet mode
+    final double chartSize = isWide
+        ? 220                          // tablet size
+        : screenWidth * 0.55;          // responsive phone size
+
+
     return Container(
       padding: const EdgeInsets.all(20),
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-      ),
-
-      child: Row(
-        children: [
-          Container(
-            width: 150,
-            height: 150,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              shape: BoxShape.circle,
-            ),
-            child: const Center(child: Text("Pie")),
-          ),
-          const SizedBox(width: 20),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Row(
-                  children: [
-                    CircleAvatar(radius: 6, backgroundColor: Colors.red),
-                    SizedBox(width: 8),
-                    Text("Online Shopping", style: TextStyle(fontSize: 14)),
-                  ],
-                ),
-                SizedBox(height: 12),
-                Text("Total Highest Spent:", style: TextStyle(fontSize: 14)),
-                SizedBox(height: 5),
-                ColoredBox(
-                  color: Color(0xffffd5d5),
-                  child: Padding(
-                    padding:
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: Text(
-                      "Online Shopping",
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 6,
+            color: Colors.black12,
+            offset: Offset(0, 3),
+          )
         ],
       ),
+
+      child: isWide
+          ? Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 📌 PIE CHART (tablets)
+          SizedBox(
+            width: chartSize,
+            height: chartSize,
+            child: PieChart(
+              PieChartData(
+                centerSpaceRadius: 45,
+                sectionsSpace: 3,
+                startDegreeOffset: 270,
+                sections: sections,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 32),
+
+          // 📌 LEGEND (tablets)
+          Expanded(child: _buildPieLegend(categoryTotals, resolvedColors, topCategory)),
+        ],
+      )
+
+      // ---------------------------
+      // 📌 STACKED MODE (phones)
+      // ---------------------------
+          : Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 6),
+            child: SizedBox(
+              width: chartSize,
+              height: chartSize,
+              child: PieChart(
+                PieChartData(
+                  centerSpaceRadius: 45,
+                  sectionsSpace: 3,
+                  startDegreeOffset: 270,
+                  sections: sections,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          _buildPieLegend(categoryTotals, resolvedColors, topCategory),
+        ],
+      ),
+    );
+  }
+
+//------------------------------------
+// Separate LEGEND widget (cleaner)
+//------------------------------------
+  Widget _buildPieLegend(
+      Map<String, double> totals,
+      Map<String, Color> colors,
+      String topCategory,
+      ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...totals.entries.map((e) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: colors[e.key],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "${e.key}  (₱${pesoFormat.format(e.value)})",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              ],
+            ),
+          );
+        }),
+
+        const SizedBox(height: 12),
+
+        const Text("Highest Category:", style: TextStyle(fontSize: 14)),
+        const SizedBox(height: 6),
+
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.red.shade100,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            topCategory,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Colors.red,
+            ),
+          ),
+        )
+      ],
     );
   }
 
@@ -565,13 +800,12 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
-
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text("Wallet", style: TextStyle(fontSize: 18)),
             Text(
-              "₱${controller.walletAmount.toStringAsFixed(2)}",
+              "₱${pesoFormat.format(controller.walletAmount)}",
               style: const TextStyle(
                   fontSize: 18, fontWeight: FontWeight.bold),
             ),

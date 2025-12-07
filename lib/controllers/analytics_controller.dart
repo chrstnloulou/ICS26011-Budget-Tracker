@@ -1,4 +1,7 @@
 import '../models/transaction_model.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:math';
+
 
 class AnalyticsController {
   // -----------------------------
@@ -102,4 +105,66 @@ class AnalyticsController {
     }
     return monthTotals;
   }
+
+  // -----------------------------
+// CATEGORY TOTALS FOR PIE CHART
+// -----------------------------
+  Map<String, double> getCategoryTotals() {
+    Map<String, double> totals = {};
+
+    for (var tx in allTransactions) {
+      if (tx.type != "expense") continue;
+
+      totals[tx.category] =
+          (totals[tx.category] ?? 0) + tx.amount;
+    }
+
+    return totals;
+  }
+
+// -----------------------------
+// HIGHEST SPENT CATEGORY
+// -----------------------------
+  String getTopCategory() {
+    final totals = getCategoryTotals();
+    if (totals.isEmpty) return "No Expense";
+
+    return totals.entries
+        .reduce((a, b) => a.value > b.value ? a : b)
+        .key;
+  }
+
+  List<FlSpot> getMonthlySpots() {
+    final data = getMonthlyData();
+    List<FlSpot> spots = [];
+
+    for (int day = 1; day <= 31; day++) {
+      final value = data[day] ?? 0.0;
+      spots.add(FlSpot(day.toDouble(), value));
+    }
+    return spots;
+  }
+  List<FlSpot> getYearlySpots() {
+    final data = getYearlyData();
+    List<FlSpot> spots = [];
+
+    for (int month = 1; month <= 12; month++) {
+      final value = data[month] ?? 0.0;
+      spots.add(FlSpot(month.toDouble(), value));
+    }
+    return spots;
+  }
+
+  double calculateInterval(List<FlSpot> spots) {
+    if (spots.isEmpty) return 100;
+
+    double maxY = spots.map((e) => e.y).fold(0, max);
+
+    if (maxY <= 1000) return 200;
+    if (maxY <= 5000) return 1000;
+    if (maxY <= 10000) return 2000;
+
+    return maxY / 5;
+  }
+
 }

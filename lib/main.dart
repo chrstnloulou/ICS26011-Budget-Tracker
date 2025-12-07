@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ics26011_budget_tracker/views/analytics_view.dart';
+import 'package:mobprogproj/views/analytics_view.dart';
+import 'package:mobprogproj/views/budget_planner_page.dart';
 import 'package:provider/provider.dart';
 import 'controllers/wallet_controller.dart';
 import 'views/start_page.dart';
@@ -36,6 +37,7 @@ class BudgetBuddyApp extends StatelessWidget {
         '/': (context) => const StartPage(),
         '/wallet' : (context) => const WalletPage(),
         '/analytics' : (context) => const AnalyticsPage(),
+        '/budget' : (context) => const BudgetPlannerPage(),
       },
     );
   }
